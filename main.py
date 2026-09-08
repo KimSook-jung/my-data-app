@@ -1,76 +1,112 @@
-# 어제의 박스오피스 — KOBIS 일별 박스오피스 API
 import datetime
-
 import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="어제의 박스오피스", page_icon="🎬", layout="wide")
+# 1. 페이지 설정
+st.set_page_config(
+    page_title="박스오피스 조회", page_icon="🎬", layout="wide"
+)
 
-# 인증키는 비밀 금고(secrets)에서 불러온다 — 코드에 직접 쓰지 않는다
-API_KEY = st.secrets["KOBIS_KEY"]
-URL = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
+st.title("🎬 박스오피스 조회")
 
-# '어제'를 한국 시간 기준으로 계산한다 (배포 서버의 시계는 한국 시간이 아니다)
-KST = datetime.timezone(datetime.timedelta(hours=9))
-yesterday = datetime.datetime.now(KST).date() - datetime.timedelta(days=1)
-target_dt = yesterday.strftime("%Y%m%d")
+# 2. 날짜 선택 기능 (최대 선택 가능 날짜: 어제)
+yesterday = datetime.date.today() - datetime.timedelta(days=1)
+selected_date = st.date_input(
+    "조회할 날짜를 선택하세요",
+    value=yesterday,
+    max_value=yesterday,
+    help="오늘 날짜는 집계 전이므로 어제 날짜까지 선택할 수 있습니다.",
+)
 
+# KOBIS API 키 불러오기
+KOBIS_API_KEY = st.secrets["KOBIS_API_KEY"]
+formatted_date = selected_date.strftime("%Y%m%d")
 
-@st.cache_data(ttl=3600)  # 같은 날짜는 한 시간 동안 기억해 두고 API를 다시 부르지 않는다
-def fetch_boxoffice(date_str):
-    """KOBIS API에서 해당 날짜의 일별 박스오피스를 받아 온다."""
-    params = {"key": API_KEY, "targetDt": date_str}
-    res = requests.get(URL, params=params, timeout=10)
-    res.raise_for_status()
-    return res.json()
-
-
-st.title("🎬 어제의 박스오피스")
-st.caption(f"조회 날짜: {yesterday} (한국 시간 기준 어제)")
+# 3. KOBIS API 데이터 요청
+url = f"http://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key={KOBIS_API_KEY}&targetDt={formatted_date}"
 
 try:
-    data = fetch_boxoffice(target_dt)
-except requests.RequestException:
-    st.error("서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 잠시 뒤 새로고침해 주세요.")
-    st.stop()
+  response = requests.get(url)
+  data = response.json()
+  daily_list = data.get("boxOfficeResult", {}).get("dailyBoxOfficeList", [])
 
-# 인증키가 틀리면 상태코드는 200이지만 faultInfo 상자가 온다
-if "faultInfo" in data:
-    st.error(f"API가 오류를 돌려주었습니다: {data['faultInfo'].get('message', '')}")
-    st.info("비밀 금고(secrets)의 KOBIS_KEY 값이 올바른지 확인해 주세요.")
-    st.stop()
+  # 4. 영화 목록이 비어있는 경우 처리
+  if not daily_list:
+    st.warning("그날은 아직 집계 전입니다.")
+  else:
+    # --- [상단] 1위 영화 하이라이트 ---
+    top_movie = daily_list[0]
+    st.header(f"🥇 1위 — {top_movie.get('movieNm')}")
 
-movies = data.get("boxOfficeResult", {}).get("dailyBoxOfficeList", [])
+    col1, col2, col3 = st.columns(3)
+    col1.metric("관객수", f"{int(top_movie.get('audiCnt', 0)):,}명")
+    col2.metric("누적 관객수", f"{int(top_movie.get('audiAcc', 0)):,}명")
+    col3.metric("스크린수", f"{int(top_movie.get('scrnCnt', 0)):,}개")
 
-# 영화 목록이 비어서 오면 — 아직 집계 전인 날짜다
-if not movies:
-    st.warning("영화 목록이 비어 있습니다. 아직 집계 전인 날짜는 아닌지 확인해 주세요.")
-    st.stop()
+    st.markdown("---")
 
-df = pd.DataFrame(movies)
+    # --- [중단] 전체 순위표 데이터 가공 ---
+    table_data = []
+    chart_data = []
 
-# 숫자가 글자로 오므로 숫자로 바꿔야 정렬과 그래프에 쓸 수 있다
-for col in ["rank", "audiCnt", "audiAcc", "scrnCnt"]:
-    df[col] = pd.to_numeric(df[col])
+    for item in daily_list:
+      rank = item.get("rank")
+      movie_nm = item.get("movieNm", "")
+      open_dt = item.get("openDt", "")
+      audi_cnt = int(item.get("audiCnt", 0))
+      audi_acc = int(item.get("audiAcc", 0))
+      scrn_cnt = int(item.get("scrnCnt", 0))
+      rank_inten = int(item.get("rankInten", 0))
 
-# 1위 영화는 지표 카드 세 장으로 크게
-top = df.sort_values("rank").iloc[0]
-st.subheader(f"🥇 1위 — {top['movieNm']}")
-c1, c2, c3 = st.columns(3)
-c1.metric("어제 관객수", f"{top['audiCnt']:,}명")
-c2.metric("누적 관객수", f"{top['audiAcc']:,}명")
-c3.metric("스크린수", f"{top['scrnCnt']:,}개")
+      # 조건 1: 누적관객 100만 명 이상일 때 영화명 옆에 트로피 이모지 붙이기
+      display_name = (
+          f"{movie_nm} 🏆" if audi_acc >= 1_000_000 else movie_nm
+      )
 
-# 전체 순위표
-st.subheader("📋 어제의 순위표")
-table = df.sort_values("rank")[["rank", "movieNm", "openDt", "audiCnt", "audiAcc", "scrnCnt"]]
-table.columns = ["순위", "영화명", "개봉일", "관객수", "누적관객", "스크린수"]
-st.dataframe(table, hide_index=True, width="stretch")
+      # 조건 2: 순위 증감에 따른 화살표 및 표시 설정
+      if rank_inten > 0:
+        inten_str = f"🔺 {rank_inten}"  # 순위 상승 (빨간 위 화살표)
+      elif rank_inten < 0:
+        inten_str = f"🔹 {abs(rank_inten)}"  # 순위 하락 (파란 아래 화살표)
+      else:
+        inten_str = "-"  # 변동 없음
 
-# 관객수 상위 5편은 막대그래프로
-st.subheader("📊 관객수 상위 5편")
-top5 = df.sort_values("audiCnt", ascending=False).head(5)
-fig = px.bar(top5, x="movieNm", y="audiCnt", labels={"movieNm": "영화명", "audiCnt": "어제 관객수"})
-st.plotly_chart(fig, width="stretch")
+      table_data.append({
+          "순위": rank,
+          "영화명": display_name,
+          "개봉일": open_dt,
+          "관객수": f"{audi_cnt:,}",
+          "누적관객": f"{audi_acc:,}",
+          "스크린수": f"{scrn_cnt:,}",
+          "순위 변동": inten_str,
+      })
+
+      # 차트용 데이터 수집
+      chart_data.append({"영화명": movie_nm, "관객수": audi_cnt})
+
+    df = pd.DataFrame(table_data)
+
+    st.subheader(
+        f"📋 {selected_date.strftime('%Y-%m-%d')} 박스오피스 순위표"
+    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # --- [하단] 관객수 상위 5편 바 차트 ---
+    st.markdown("---")
+    st.subheader("📊 관객수 상위 5편")
+
+    df_chart = pd.DataFrame(chart_data[:5])
+    fig = px.bar(
+        df_chart,
+        x="영화명",
+        y="관객수",
+        text_auto=",.0f",
+        labels={"영화명": "영화명", "관객수": "당일 관객수"},
+    )
+    fig.update_traces(textposition="outside")
+    st.plotly_chart(fig, use_container_width=True)
+
+except Exception as e:
+  st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
