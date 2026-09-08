@@ -16,10 +16,8 @@ selected_date = st.date_input(
     max_value=yesterday,
     help="오늘 날짜는 집계 전이므로 어제 날짜까지 선택할 수 있습니다.",
 )
-
-# KOBIS API 키 (Secrets 관리 권장)
-# 기존 (오류 발생)
-# KOBIS_API_KEY = st.secrets["495e52df5baa4f5a4aaa3473cc414e20"]
+# 2. 날짜 포맷 변환 (url 설정보다 먼저 나와야 합니다!)
+formatted_date = selected_date.strftime("%Y%m%d")
 
 # 수정 (정상)
 KOBIS_API_KEY = st.secrets["KOBIS_KEY"]
