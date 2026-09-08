@@ -18,7 +18,7 @@ selected_date = st.date_input(
 )
 
 # KOBIS API 키 (Secrets 관리 권장)
-KOBIS_API_KEY = st.secrets["KOBIS_API_KEY"]
+KOBIS_API_KEY = st.secrets["495e52df5baa4f5a4aaa3473cc414e20"]
 formatted_date = selected_date.strftime("%Y%m%d")
 
 # 3. KOBIS API 데이터 요청
