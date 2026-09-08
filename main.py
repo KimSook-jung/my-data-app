@@ -40,7 +40,7 @@ fig1 = px.line(
 fig1.update_traces(hovertemplate="%{x}년: %{y}℃")
 st.plotly_chart(fig1, use_container_width=True)
 
-# 2. 일별 평균기온 분포 히스토그램 추가
+# 2. 일별 평균기온 분포 히스토그램
 st.header("일별 평균기온은 어느 구간에 몰려 있나")
 
 fig2 = px.histogram(
@@ -51,3 +51,16 @@ fig2 = px.histogram(
     title="일별 평균기온 분포 (히스토그램)",
 )
 st.plotly_chart(fig2, use_container_width=True)
+
+# 3. 최저기온과 최고기온의 관계 산점도 추가
+st.header("최저기온과 최고기온의 관계")
+
+fig3 = px.scatter(
+    df,
+    x="최저기온",
+    y="최고기온",
+    opacity=0.2,
+    labels={"최저기온": "최저기온 (℃)", "최고기온": "최고기온 (℃)"},
+    title="일별 최저기온 vs 최고기온 (산점도)",
+)
+st.plotly_chart(fig3, use_container_width=True)
