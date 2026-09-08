@@ -20,7 +20,7 @@ def load_data():
 
 df = load_data()
 
-# 연도별 평균 기온 계산
+# 1. 연도별 평균 기온 계산 및 선 그래프
 yearly_avg = (
     df.groupby("연도", as_index=False)["평균기온"]
     .mean()
@@ -29,8 +29,7 @@ yearly_avg = (
 
 st.header("연평균 기온 추이")
 
-# Plotly 라인 차트 생성
-fig = px.line(
+fig1 = px.line(
     yearly_avg,
     x="연도",
     y="평균기온",
@@ -38,6 +37,17 @@ fig = px.line(
     markers=True,
     title="서울의 연도별 평균 기온 변화",
 )
+fig1.update_traces(hovertemplate="%{x}년: %{y}℃")
+st.plotly_chart(fig1, use_container_width=True)
 
-fig.update_traces(hovertemplate="%{x}년: %{y}℃")
-st.plotly_chart(fig, use_container_width=True)
+# 2. 일별 평균기온 분포 히스토그램 추가
+st.header("일별 평균기온은 어느 구간에 몰려 있나")
+
+fig2 = px.histogram(
+    df,
+    x="평균기온",
+    nbins=50,
+    labels={"평균기온": "일별 평균기온 (℃)"},
+    title="일별 평균기온 분포 (히스토그램)",
+)
+st.plotly_chart(fig2, use_container_width=True)
